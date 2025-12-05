@@ -138,6 +138,13 @@ void render_texture(void *pixels, void *previous)
 
     // 2. Display each WideGB tile
     if (should_render_widescreen) {
+        struct scale scale = compute_viewport_scale();
+        
+        int new_width = 160 * scale.x;
+        int new_height = 144 * scale.y;
+        
+        viewport_in_surface.x = (drawable_rect.w - new_width) / 2;
+        
         // For each tile…
         size_t tiles_count = WGB_tiles_count(&wgb);
         for (int i = 0; i < tiles_count; i++) {
@@ -196,7 +203,7 @@ void render_texture(void *pixels, void *previous)
       // Draw transparently the screen area overlapped by the window
       SDL_Rect wnd_rect_in_surface = screen_rect_to_surface(wnd_rect);
       SDL_SetSurfaceBlendMode(screen_surface, SDL_BLENDMODE_BLEND);
-      SDL_SetSurfaceAlphaMod(screen_surface, 170);
+      SDL_SetSurfaceAlphaMod(screen_surface, 200);
       SDL_BlitSurface(screen_surface, &wnd_rect, active_window_surface, &wnd_rect_in_surface);
     }
 
@@ -312,15 +319,8 @@ struct scale compute_viewport_scale(void)
         scale.x = (int)(scale.x);
         scale.y = (int)(scale.y);
     }
-    else if (configuration.scaling_mode == GB_SDL_SCALING_WIDE_SCREEN) {
-        scale.x = floor(scale.x * 0.8);
-        scale.y = floor(scale.y * 0.8);
-
-        if (scale.x < 1.0) scale.x = 1.0;
-        if (scale.y < 1.0) scale.y = 1.0;
-    }
-
-    if (configuration.scaling_mode != GB_SDL_SCALING_ENTIRE_WINDOW) {
+    else if ( (configuration.scaling_mode != GB_SDL_SCALING_ENTIRE_WINDOW) ||
+                (configuration.scaling_mode == GB_SDL_SCALING_WIDE_SCREEN) ) {
         if (scale.x > scale.y) {
             scale.x = scale.y;
         }
@@ -334,18 +334,12 @@ struct scale compute_viewport_scale(void)
 
 void update_viewport(void)
 {
+    SDL_Rect clipViewport;
     SDL_Rect drawable_rect = window_drawable_rect();
     struct scale scale = compute_viewport_scale();
 
     int new_width = 160 * scale.x;
     int new_height = 144 * scale.y;
-
-    viewport = (SDL_Rect) {
-        .x = (drawable_rect.w - new_width) / 2,
-        .y = (drawable_rect.h - new_height) / 2,
-        .w = new_width,
-        .h = new_height
-    };
 
     SDL_Rect drawable_rect_in_screen = window_to_screen_rect(drawable_rect);
     if (window_texture) {
@@ -361,17 +355,24 @@ void update_viewport(void)
     screen_surface = SDL_CreateRGBSurfaceWithFormat(0, 160, 144, 32, pixel_format->format);
 
     border_surface = SDL_CreateRGBSurfaceWithFormat(0, 162, 146, 32, pixel_format->format);
-    SDL_FillRect(border_surface, NULL, SDL_MapRGB(border_surface->format, 0, 0, 0));
+    SDL_FillRect(border_surface, NULL, SDL_MapRGB(border_surface->format, 255, 255, 255));
     SDL_SetSurfaceBlendMode(border_surface, SDL_BLENDMODE_BLEND);
     SDL_SetSurfaceAlphaMod(border_surface, 30);
-
-    if (configuration.scaling_mode != GB_SDL_SCALING_WIDE_SCREEN) {
-        if (renderer) {
-            SDL_RenderSetClipRect(renderer, &viewport);
-        }
-        else {
-            glViewport(viewport.x, viewport.y, viewport.w, viewport.h);
-        }
+    
+    viewport = (SDL_Rect) {
+        .x = (drawable_rect.w - new_width) / 2,
+        .y = (drawable_rect.h - new_height) / 2,
+        .w = new_width,
+        .h = new_height
+    };
+    
+    clipViewport = (configuration.scaling_mode == GB_SDL_SCALING_WIDE_SCREEN) ? drawable_rect : viewport;
+    
+    if (renderer) {
+        SDL_RenderSetClipRect(renderer, &clipViewport);
+    }
+    else {
+        glViewport(clipViewport.x, clipViewport.y, clipViewport.w, clipViewport.h);
     }
 }
 
