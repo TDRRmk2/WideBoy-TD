@@ -15,7 +15,12 @@ endif
 
 ifeq ($(PLATFORM),windows32)
 _ := $(shell chcp 65001)
+EXESUFFIX:=.exe
+else
+EXESUFFIX:=
 endif
+
+PB12_COMPRESS := build/pb12$(EXESUFFIX)
 
 ifeq ($(PLATFORM),Darwin)
 DEFAULT := cocoa
@@ -65,7 +70,7 @@ endif
 
 # Set compilation and linkage flags based on target, platform and configuration
 
-CFLAGS += -Werror -Wall -Wno-strict-aliasing -Wno-unknown-warning -Wno-unknown-warning-option -Wno-multichar -Wno-int-in-bool-context -std=gnu11 -D_GNU_SOURCE -DVERSION="$(VERSION)" -I. -D_USE_MATH_DEFINES
+CFLAGS += -Wall -Wno-strict-aliasing -Wno-unknown-warning -Wno-unknown-warning-option -Wno-multichar -Wno-int-in-bool-context -std=gnu11 -D_GNU_SOURCE -DVERSION="$(VERSION)" -I. -D_USE_MATH_DEFINES
 SDL_LDFLAGS := -lSDL2 -lGL
 ifeq ($(PLATFORM),windows32)
 CFLAGS += -IWindows
@@ -152,6 +157,15 @@ ifneq ($(filter $(MAKECMDGOALS),cocoa),)
 -include $(COCOA_OBJECTS:.o=.dep)
 endif
 endif
+
+RGBASM  := $(RGBDS)rgbasm
+RGBLINK := $(RGBDS)rgblink
+RGBGFX  := $(RGBDS)rgbgfx
+
+# RGBASM 0.7+ deprecate and remove `-h`
+RGBASM_FLAGS := $(if $(filter $(shell echo 'println __RGBDS_MAJOR__ || (!__RGBDS_MAJOR__ && __RGBDS_MINOR__ > 6)' | $(RGBASM) -), $$0), -h,) --include $(OBJ)/BootROMs/ --include BootROMs/
+# RGBGFX 0.6+ replace `-h` with `-Z`, and need `-c embedded`
+RGBGFX_FLAGS := $(if $(filter $(shell echo 'println __RGBDS_MAJOR__ || (!__RGBDS_MAJOR__ && __RGBDS_MINOR__ > 5)' | $(RGBASM) -), $$0), -h -u, -Z -u -c embedded)
 
 $(OBJ)/%.dep: %
 	-@$(MKDIR) -p $(dir $@)
@@ -310,14 +324,29 @@ $(BIN)/SDL/Shaders: Shaders
 	cp -rf Shaders/*.fsh $@
 
 # Boot ROMs
-
-$(BIN)/BootROMs/%.bin: BootROMs/%.asm
+$(OBJ)/%.2bpp: %.png
 	-@$(MKDIR) -p $(dir $@)
-	cd BootROMs && rgbasm -o ../$@.tmp ../$<
-	rgblink -o $@.tmp2 $@.tmp
-	dd if=$@.tmp2 of=$@ count=1 bs=$(if $(findstring dmg,$@)$(findstring sgb,$@),256,2304)
-	@rm $@.tmp $@.tmp2
+	$(RGBGFX) $(RGBGFX_FLAGS) -o $@ $<
 
+$(OBJ)/BootROMs/SameBoyLogo.pb12: $(OBJ)/BootROMs/SameBoyLogo.2bpp $(PB12_COMPRESS)
+	-@$(MKDIR) -p $(dir $@)
+	"$(realpath $(PB12_COMPRESS))" < $< > $@
+	
+$(PB12_COMPRESS): BootROMs/pb12.c
+	-@$(MKDIR) -p $(dir $@)
+	$(CC) -std=c99 -Wall -Werror $< -o $@
+
+$(BIN)/BootROMs/cgb0_boot.bin: BootROMs/cgb_boot.asm
+$(BIN)/BootROMs/agb_boot.bin: BootROMs/cgb_boot.asm
+$(BIN)/BootROMs/cgb_boot_fast.bin: BootROMs/cgb_boot.asm
+$(BIN)/BootROMs/sgb2_boot.bin: BootROMs/sgb_boot.asm
+
+$(BIN)/BootROMs/%.bin: BootROMs/%.asm $(OBJ)/BootROMs/SameBoyLogo.pb12
+	-@$(MKDIR) -p $(dir $@)
+	$(RGBASM) $(RGBASM_FLAGS) -o $@.tmp $<
+	$(RGBLINK) -x -o $@ $@.tmp
+	@rm $@.tmp
+	
 # Libretro Core (uses its own build system)
 libretro:
 	$(MAKE) -C libretro
