@@ -274,7 +274,7 @@ configuration_t configuration =
     },
     .color_correction_mode = GB_COLOR_CORRECTION_EMULATE_HARDWARE,
     .highpass_mode = GB_HIGHPASS_ACCURATE,
-    .scaling_mode = GB_SDL_SCALING_INTEGER_FACTOR,
+    .scaling_mode = GB_SDL_SCALING_WIDE_SCREEN,
     .blend_frames = true,
     .rewind_length = 60 * 2,
     .model = MODEL_CGB
