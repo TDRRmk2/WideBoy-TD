@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <time.h>
+#include <Misc/wide_gb.h>
 
 #include "gb_struct_def.h"
 #include "save_state.h"
@@ -502,6 +503,7 @@ struct GB_gameboy_internal_s {
         /* I/O */
         uint32_t *screen;
         uint32_t *bg_screen;
+        WGB_native_pixel_t *bg_native;
         uint32_t background_palettes_rgb[0x20];
         uint32_t sprite_palettes_rgb[0x20];
         GB_color_correction_mode_t color_correction_mode;
@@ -664,6 +666,7 @@ void GB_attributed_log(GB_gameboy_t *gb, GB_log_attributes attributes, const cha
 
 void GB_set_pixels_output(GB_gameboy_t *gb, uint32_t *output);
 void GB_set_bg_pixels_output(GB_gameboy_t *gb, uint32_t *output);
+void GB_set_bg_native_output(GB_gameboy_t *gb, WGB_native_pixel_t *output);
 
 void GB_set_infrared_input(GB_gameboy_t *gb, bool state);
 void GB_queue_infrared_input(GB_gameboy_t *gb, bool state, long cycles_after_previous_change); /* In 8MHz units*/
@@ -695,5 +698,7 @@ size_t GB_get_screen_width(GB_gameboy_t *gb);
 size_t GB_get_screen_height(GB_gameboy_t *gb);
 
 unsigned GB_get_player_count(GB_gameboy_t *gb);
+
+uint16_t *GB_get_background_palettes_data(GB_gameboy_t *gb);
 
 #endif /* GB_h */

@@ -66,6 +66,10 @@ typedef struct { int x, y, w, h; } WGB_Rect;
 typedef struct { int x, y; } WGB_Point;
 #endif
 
+typedef struct {
+    uint32_t line : 8;
+    uint32_t pixel : 8;
+} WGB_native_pixel_t;
 
 // The position of a screen-wide tile, as a number of screens relative
 // to the origin.
@@ -115,6 +119,7 @@ typedef struct {
     WGB_scene scenes[WIDE_GB_MAX_SCENES];
     size_t scenes_count;
     WGB_scene_frame *scene_frames; // a <frame_hash, WGB_scene_frame> map
+    uint8_t palettes[0x40];
 } wide_gb;
 
 // A pointer to a function that takes an opaque uint32 value and decode it into RGB components
@@ -145,7 +150,7 @@ void WGB_save_to_path(wide_gb *wgb, const char *save_path, WGB_rgb_decode_callba
 //   - wx: the WX (WindowX) Game Boy register value
 //   - wy: the WY (WindowY) Game Boy register value
 //   - is_window_enabled: the Game Boy register flag indicating that the Window is enabled (see LCDC)
-void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, bool is_window_enabled);
+void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, uint16_t *palettes, bool is_window_enabled);
 
 // Write the screen content to the relevant tiles.
 // Typically called at vblank.

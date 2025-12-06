@@ -492,12 +492,14 @@ WGB_tile* WGB_write_tile_pixel(wide_gb *wgb, WGB_Point pixel_pos, uint32_t pixel
 
 /*---------------- Updates from hardware ------------------------------*/
 
-void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, bool is_window_enabled)
+void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, uint16_t *palettes, bool is_window_enabled)
 {
     //
     // Update hardware scroll registers
     //
 
+    memcpy(&wgb->palettes, palettes, 0x40);
+    
     WGB_Point previous_hardware_scroll = wgb->hardware_scroll;
     WGB_Point new_hardware_scroll = { scx, scy };
 

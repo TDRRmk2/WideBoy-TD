@@ -410,6 +410,11 @@ void GB_set_bg_pixels_output(GB_gameboy_t *gb, uint32_t *output)
     gb->bg_screen = output;
 }
 
+void GB_set_bg_native_output(GB_gameboy_t *gb, WGB_native_pixel_t *output)
+{
+    gb->bg_native = output;
+}
+
 void GB_set_vblank_callback(GB_gameboy_t *gb, GB_vblank_callback_t callback)
 {
     gb->vblank_callback = callback;
@@ -816,4 +821,9 @@ size_t GB_get_screen_height(GB_gameboy_t *gb)
 unsigned GB_get_player_count(GB_gameboy_t *gb)
 {
     return GB_is_sgb(gb)? gb->sgb->player_count : 1;
+}
+
+uint16_t *GB_get_background_palettes_data(GB_gameboy_t *gb)
+{
+    return (uint16_t *)gb->background_palettes_data;
 }

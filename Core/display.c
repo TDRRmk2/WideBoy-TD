@@ -399,6 +399,9 @@ static void render_pixel_if_possible(GB_gameboy_t *gb)
         if (gb->bg_screen) {
             gb->bg_screen[gb->position_in_line + gb->current_line * WIDTH] = gb->background_palettes_rgb[fifo_item->palette * 4 + pixel];
         }
+        if (gb->bg_native) {
+            gb->bg_native[gb->position_in_line + gb->current_line * WIDTH] = (WGB_native_pixel_t) {fifo_item->palette, pixel};
+        }
     }
     
     if (draw_oam) {

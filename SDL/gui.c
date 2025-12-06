@@ -141,7 +141,6 @@ void render_texture(void *pixels, void *previous)
         struct scale scale = compute_viewport_scale();
         
         int new_width = 160 * scale.x;
-        int new_height = 144 * scale.y;
         
         viewport_in_surface.x = (drawable_rect.w - new_width) / 2;
         

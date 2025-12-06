@@ -27,6 +27,7 @@
 GB_gameboy_t gb;
 static bool paused = false;
 static uint32_t pixel_buffer_1[160*144], pixel_buffer_2[160*144], bg_pixel_buffer[160*144];
+WGB_native_pixel_t bg_native_buffer[160*144];
 static uint32_t *active_pixel_buffer = pixel_buffer_1, *previous_pixel_buffer = pixel_buffer_2;
 static bool underclock_down = false, rewind_down = false, do_rewind = false, rewind_paused = false, turbo_down = false;
 static double clock_mutliplier = 1.0;
@@ -342,6 +343,8 @@ static void vblank(GB_gameboy_t *gb)
         clock_mutliplier += 0.1;
         GB_set_clock_multiplier(gb, clock_mutliplier);
     }
+    
+    uint16_t *tmp_pal = GB_get_background_palettes_data(gb);
 
     // Notify WideGB of hardware updates (scroll, window position, background pixels)
     int scrollX = ((uint8_t *)GB_get_direct_access(gb, GB_DIRECT_ACCESS_IO, NULL, NULL))[GB_IO_SCX];
@@ -349,7 +352,7 @@ static void vblank(GB_gameboy_t *gb)
     int wX = ((uint8_t *)GB_get_direct_access(gb, GB_DIRECT_ACCESS_IO, NULL, NULL))[GB_IO_WX] - 7;
     int wY = ((uint8_t *)GB_get_direct_access(gb, GB_DIRECT_ACCESS_IO, NULL, NULL))[GB_IO_WY];
     bool is_window_enabled = ((uint8_t *)GB_get_direct_access(gb, GB_DIRECT_ACCESS_IO, NULL, NULL))[GB_IO_LCDC] & 0x20;
-    WGB_update_hardware_values(&wgb, scrollX, scrollY, wX, wY, is_window_enabled);
+    WGB_update_hardware_values(&wgb, scrollX, scrollY, wX, wY, tmp_pal, is_window_enabled);
 
     WGB_update_screen(&wgb, bg_pixel_buffer, rgb_decode);
 
@@ -443,6 +446,7 @@ restart:
         GB_set_vblank_callback(&gb, (GB_vblank_callback_t) vblank);
         GB_set_pixels_output(&gb, active_pixel_buffer);
         GB_set_bg_pixels_output(&gb, bg_pixel_buffer);
+        GB_set_bg_native_output(&gb, bg_native_buffer);
         GB_set_rgb_encode_callback(&gb, gb_rgb_encode);
         GB_set_sample_rate(&gb, have_aspec.freq);
         GB_set_color_correction_mode(&gb, configuration.color_correction_mode);
