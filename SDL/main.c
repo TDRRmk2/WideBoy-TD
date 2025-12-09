@@ -352,9 +352,9 @@ static void vblank(GB_gameboy_t *gb)
     int wX = ((uint8_t *)GB_get_direct_access(gb, GB_DIRECT_ACCESS_IO, NULL, NULL))[GB_IO_WX] - 7;
     int wY = ((uint8_t *)GB_get_direct_access(gb, GB_DIRECT_ACCESS_IO, NULL, NULL))[GB_IO_WY];
     bool is_window_enabled = ((uint8_t *)GB_get_direct_access(gb, GB_DIRECT_ACCESS_IO, NULL, NULL))[GB_IO_LCDC] & 0x20;
-    WGB_update_hardware_values(&wgb, scrollX, scrollY, wX, wY, tmp_pal, is_window_enabled);
+    WGB_update_hardware_values(&wgb, scrollX, scrollY, wX, wY, tmp_pal, is_window_enabled, gb);
 
-    WGB_update_screen(&wgb, bg_pixel_buffer, rgb_decode);
+    WGB_update_screen(&wgb, bg_native_buffer, rgb_decode);
 
     // Present frame
     if (configuration.blend_frames) {

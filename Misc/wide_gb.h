@@ -2,6 +2,7 @@
 #define wide_gb_h
 
 #include <stdbool.h>
+#include <Core/gb_struct_def.h>
 #include "uthash.h"
 
 // This file implements an engine for recording and displaying
@@ -58,6 +59,10 @@
 #define WIDE_GB_TILE_WIDTH 160
 #define WIDE_GB_TILE_HEIGHT 144
 
+#define CGB_COLOR_BITS 5
+#define CGB_COLOR_MASK ((2 ^ CGB_COLOR_BITS) - 1)
+#define CGB_COLOR_TO_8(val) ((val) * 255 / 31)
+
 #ifdef SDL_INIT_EVERYTHING
 #define WGB_Rect SDL_Rect
 #define WGB_Point SDL_Point
@@ -66,9 +71,9 @@ typedef struct { int x, y, w, h; } WGB_Rect;
 typedef struct { int x, y; } WGB_Point;
 #endif
 
-typedef struct {
-    uint32_t line : 8;
-    uint32_t pixel : 8;
+typedef struct __attribute__((packed)) {
+    uint8_t line;
+    uint8_t pixel;
 } WGB_native_pixel_t;
 
 // The position of a screen-wide tile, as a number of screens relative
@@ -81,7 +86,7 @@ typedef struct {
 // A tile is a recorded framebuffer the size of the screen.
 typedef struct {
     WGB_tile_position position;
-    uint32_t *pixel_buffer;
+    WGB_native_pixel_t *pixel_buffer;
     bool dirty;
 } WGB_tile;
 
@@ -119,7 +124,7 @@ typedef struct {
     WGB_scene scenes[WIDE_GB_MAX_SCENES];
     size_t scenes_count;
     WGB_scene_frame *scene_frames; // a <frame_hash, WGB_scene_frame> map
-    uint8_t palettes[0x40];
+    uint32_t palettes[32];
 } wide_gb;
 
 // A pointer to a function that takes an opaque uint32 value and decode it into RGB components
@@ -150,7 +155,7 @@ void WGB_save_to_path(wide_gb *wgb, const char *save_path, WGB_rgb_decode_callba
 //   - wx: the WX (WindowX) Game Boy register value
 //   - wy: the WY (WindowY) Game Boy register value
 //   - is_window_enabled: the Game Boy register flag indicating that the Window is enabled (see LCDC)
-void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, uint16_t *palettes, bool is_window_enabled);
+void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, uint16_t *palettes, bool is_window_enabled, GB_gameboy_t *gb);
 
 // Write the screen content to the relevant tiles.
 // Typically called at vblank.
@@ -165,7 +170,7 @@ void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, 
 //   - rgb_decode: a callback for decoding the pixels to RGB components
 //
 // On return, the updated tiles are marked as `dirty`.
-void WGB_update_screen(wide_gb *wgb, uint32_t *pixels, WGB_rgb_decode_callback_t rgb_decode);
+void WGB_update_screen(wide_gb *wgb, WGB_native_pixel_t *pixels, WGB_rgb_decode_callback_t rgb_decode);
 
 /*---------------- Retrieving informations for rendering -----------------*/
 

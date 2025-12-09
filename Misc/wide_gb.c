@@ -19,7 +19,7 @@
 #include "wide_gb.h"
 
 // Constants
-#define WIDE_GB_DEBUG false
+#define WIDE_GB_DEBUG true
 #define WGB_SCROLL_WRAP_AROUND_THRESHOLD 14
 #define WGB_SCENE_CHANGE_THRESHOLD 13
 #define WGB_YOUNG_SCENE_DELAY 2
@@ -40,8 +40,8 @@
 // Forward declarations
 WGB_tile *WGB_create_tile(wide_gb *wgb, WGB_scene *scene, WGB_tile_position position);
 WGB_scene *WGB_create_scene(wide_gb *wgb);
-WGB_exact_hash WGB_frame_hash(wide_gb *wgb, uint8_t *rgb_pixels);
-WGB_perceptual_hash WGB_added_difference_hash(wide_gb *wgb, uint8_t *rgb_pixels);
+WGB_exact_hash WGB_frame_hash(wide_gb *wgb, WGB_native_pixel_t *rgb_pixels);
+WGB_perceptual_hash WGB_added_difference_hash(wide_gb *wgb, WGB_native_pixel_t *rgb_pixels);
 int hamming_distance(WGB_perceptual_hash x, WGB_perceptual_hash y);
 bool WGB_tile_position_equal_to(WGB_tile_position position1, WGB_tile_position position2);
 WGB_tile_position WGB_tile_position_from_screen_point(wide_gb *wgb, WGB_Point screen_point);
@@ -51,7 +51,9 @@ void WGB_load_tile_from_file(WGB_tile *tile, char *path, WGB_rgb_encode_callback
 void WGB_store_frame_hash(wide_gb *wgb, WGB_exact_hash hash, int scene_id, WGB_Point scene_scroll);
 int WGB_IO_mkdir(const char *dir);
 int WGB_IO_rmdir(const char *path);
-void WGB_IO_write_PPM(char *filename, int width, int height, uint8_t *pixels);
+void WGB_IO_write_PPM(char *filename, int width, int height, WGB_native_pixel_t *pixels);
+
+uint32_t GB_convert_rgb15(GB_gameboy_t *gb, uint16_t color);
 
 /*---------------- Initializers --------------------------------------*/
 
@@ -59,7 +61,7 @@ WGB_tile WGB_tile_init(WGB_tile_position position)
 {
     WGB_tile new = {
         .position = position,
-        .pixel_buffer = calloc(WIDE_GB_TILE_WIDTH * WIDE_GB_TILE_HEIGHT, sizeof(uint32_t))
+        .pixel_buffer = calloc(WIDE_GB_TILE_WIDTH * WIDE_GB_TILE_HEIGHT, sizeof(WGB_native_pixel_t))
     };
     return new;
 }
@@ -204,9 +206,9 @@ void WGB_save_to_path(wide_gb *wgb, const char *save_path, WGB_rgb_decode_callba
         for (int j = 0; j < scene.tiles_count; j++) {
             WGB_tile tile = scene.tiles[j];
 
-            // Write a `tile_#{x}_#{y}.ppm` file
+            // Write a `tile_#{x}_#{y}.wgb` file
             char tile_path[path_len + 50];
-            sprintf(tile_path, "%s/tile_%i_%i.ppm", scene_dir, tile.position.horizontal, tile.position.vertical);
+            sprintf(tile_path, "%s/tile_%i_%i.wgb", scene_dir, tile.position.horizontal, tile.position.vertical);
             WGB_tile_write_to_file(&tile, tile_path, rgb_decode);
         }
 
@@ -279,54 +281,21 @@ WGB_tile *WGB_create_tile(wide_gb *wgb, WGB_scene *scene, WGB_tile_position posi
 
 void WGB_tile_write_to_file(WGB_tile *tile, char *path, WGB_rgb_decode_callback_t rgb_decode)
 {
-    // Convert the opaque pixels values to triplets of RGB values
-    uint8_t rgb_pixels[160 * 144 * 3];
-    uint8_t r, g, b;
-    for (int i = 0; i < 160 * 144 * 3; i += 3) {
-        uint32_t pixel = tile->pixel_buffer[i / 3];
-        rgb_decode(pixel, &r, &g, &b);
-        rgb_pixels[i + 0] = r;
-        rgb_pixels[i + 1] = g;
-        rgb_pixels[i + 2] = b;
-    }
-
     // Write RGB buffer to file
-    WGB_IO_write_PPM(path, 160, 144, rgb_pixels);
+    WGB_IO_write_PPM(path, 160, 144, tile->pixel_buffer);
 }
 
 void WGB_load_tile_from_file(WGB_tile *tile, char *path, WGB_rgb_encode_callback_t rgb_encode)
 {
     // Load RGB buffer from file
-    uint8_t rgb_pixels[160 * 144 * 3];
     FILE *ppm_file = fopen(path, "r");
-
-    // Check image dimensions
-    int ppm_width, ppm_height;
-    while (fgetc(ppm_file) != '\n') ; // skip header
-    fscanf(ppm_file, "%d %d\n", &ppm_width, &ppm_height);
-    if (ppm_width != 160 || ppm_height != 144) {
-        fprintf(stderr, "wgb: failed to load file at '%s': invalid dimensions (width: %i, height: %i)\n", path, ppm_width, ppm_height);
-        return;
-    }
-
-    // Read pixel data
-    while (fgetc(ppm_file) != '\n'); // skip pixel format
-    if (fread(rgb_pixels, 3, 160 * 144, ppm_file) != 160 * 144) {
+    
+    if (fread(tile->pixel_buffer, 2, 160 * 144, ppm_file) != 160 * 144) {
         fprintf(stderr, "wgb: failed to load file at '%s': file is too short\n", path);
         return;
     }
 
     fclose(ppm_file);
-
-    // Convert the RGB format to opaque pixels values, and store it to the tile
-    for (int i = 0; i < 160 * 144; i += 1) {
-        int rgb_index = i * 3;
-        tile->pixel_buffer[i] = rgb_encode(
-            rgb_pixels[rgb_index + 0],
-            rgb_pixels[rgb_index + 1],
-            rgb_pixels[rgb_index + 2]
-        );
-    }
 }
 
 /*---------------- Managing scenes -------------------------------------*/
@@ -471,7 +440,7 @@ double WGB_is_scene_young(WGB_scene *scene)
     return difftime(time(NULL), scene->created_at) < WGB_YOUNG_SCENE_DELAY;
 }
 
-WGB_tile* WGB_write_tile_pixel(wide_gb *wgb, WGB_Point pixel_pos, uint32_t pixel)
+WGB_tile* WGB_write_tile_pixel(wide_gb *wgb, WGB_Point pixel_pos, WGB_native_pixel_t pixel)
 {
     // Retrieve the tile for this pixel
     WGB_tile_position tile_pos = WGB_tile_position_from_screen_point(wgb, pixel_pos);
@@ -492,13 +461,16 @@ WGB_tile* WGB_write_tile_pixel(wide_gb *wgb, WGB_Point pixel_pos, uint32_t pixel
 
 /*---------------- Updates from hardware ------------------------------*/
 
-void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, uint16_t *palettes, bool is_window_enabled)
+void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, uint16_t *palettes, bool is_window_enabled, GB_gameboy_t *gb)
 {
     //
     // Update hardware scroll registers
     //
 
-    memcpy(&wgb->palettes, palettes, 0x40);
+    for(int i = 0; i < 32; i++)
+    {
+        wgb->palettes[i] = GB_convert_rgb15(gb, palettes[i]);
+    }
     
     WGB_Point previous_hardware_scroll = wgb->hardware_scroll;
     WGB_Point new_hardware_scroll = { scx, scy };
@@ -544,24 +516,15 @@ void WGB_update_hardware_values(wide_gb *wgb, int scx, int scy, int wx, int wy, 
     };
 }
 
-void WGB_update_screen(wide_gb *wgb, uint32_t *pixels, WGB_rgb_decode_callback_t rgb_decode)
+void WGB_update_screen(wide_gb *wgb, WGB_native_pixel_t *pixels, WGB_rgb_decode_callback_t rgb_decode)
 {
     //
     // Generate frame hashes
     //
 
-    // Decode the RGB components of the pixels
-    uint8_t rgb_pixels[160 * 144 * 3];
-    for (size_t pixels_i = 0, rgb_i = 0; pixels_i < 160 * 144; pixels_i += 1, rgb_i += 3) {
-        rgb_decode(pixels[pixels_i],
-            &rgb_pixels[rgb_i + 0],
-            &rgb_pixels[rgb_i + 1],
-            &rgb_pixels[rgb_i + 2]);
-    }
-
     // Compute frame hashes from RGB values
-    WGB_exact_hash hash = WGB_frame_hash(wgb, rgb_pixels);
-    WGB_perceptual_hash p_hash = WGB_added_difference_hash(wgb, rgb_pixels);
+    WGB_exact_hash hash = WGB_frame_hash(wgb, pixels);
+    WGB_perceptual_hash p_hash = WGB_added_difference_hash(wgb, pixels);
 
     // Save new hash values
     WGB_exact_hash previous_exact_hash = wgb->frame_hash;
@@ -619,7 +582,7 @@ void WGB_update_screen(wide_gb *wgb, uint32_t *pixels, WGB_rgb_decode_callback_t
                     continue;
                 }
                 // Read the frame pixel
-                uint32_t pixel = pixels[pixel_x + pixel_y * 160];
+                WGB_native_pixel_t pixel = pixels[pixel_x + pixel_y * 160];
                 // Write the pixel to the relevant tile
                 WGB_tile *tile = WGB_write_tile_pixel(wgb, pixel_pos, pixel);
                 tile->dirty = true;
@@ -687,7 +650,7 @@ bool WGB_is_window_covering_screen(wide_gb *wgb, unsigned int tolered_pixels)
 //
 // `rgb_pixels` must be a 160 * 144 * 3 array, where each consecutive triplet
 // store the r, g and b components for a pixel.
-WGB_exact_hash WGB_frame_hash(wide_gb *wgb, uint8_t *rgb_pixels)
+WGB_exact_hash WGB_frame_hash(wide_gb *wgb, WGB_native_pixel_t *pixels)
 {
     // The window is often used as a HUD – and we don't want things like the
     // number of remaning lives to influence wether a frame is matched or
@@ -703,34 +666,13 @@ WGB_exact_hash WGB_frame_hash(wide_gb *wgb, uint8_t *rgb_pixels)
             if (ignore_pixels_in_window && WGB_rect_contains_point(wgb->window_rect, (WGB_Point) { x, y })) {
                 continue;
             }
-            size_t rgb_i = (x + y * 160) * 3;
-            int pixels_sum = rgb_pixels[rgb_i] + rgb_pixels[rgb_i + 1] + rgb_pixels[rgb_i + 2];
+            size_t i = (x + y * 160);
+            int pixels_sum = pixels[i].line + pixels[i].pixel;
             hash = (hash + 324723947 + pixels_sum * 2) ^ 93485734985;
         }
     }
 
     return hash;
-}
-
-void DEBUG_write_grayscale_PPM(int width, int height, uint8_t *pixels) {
-    char filename[255];
-    static int filename_increment = 0;
-    filename_increment++;
-    sprintf(filename, "/Users/kemenaran/Desktop/debug/%i.ppm", filename_increment);
-    FILE *fp = fopen(filename, "wb"); /* b - binary mode */
-    fprintf(fp, "P6\n%d %d\n255\n", width, height);
-
-    uint8_t color[3];
-    for (int j = 0; j < height; ++j) {
-        for (int i = 0; i < width; ++i) {
-            uint8_t grayscale = pixels[i + j * width];
-            color[0] = grayscale; // red
-            color[1] = grayscale; // green
-            color[2] = grayscale; // blue
-            fwrite(color, 1, 3, fp);
-      }
-  }
-  fclose(fp);
 }
 
 // Compute a perceptual hash of a frame using the "added difference hash" algorithm.
@@ -741,7 +683,7 @@ void DEBUG_write_grayscale_PPM(int width, int height, uint8_t *pixels) {
 //
 // `rgb_pixels` must be a 160 * 144 * 3 array, where each consecutive triplet
 // store the r, g and b components for a pixel.
-WGB_perceptual_hash WGB_added_difference_hash(wide_gb *wgb, uint8_t *rgb_pixels)
+WGB_perceptual_hash WGB_added_difference_hash(wide_gb *wgb, WGB_native_pixel_t *pixels)
 {
     const int block_width = 160 / 8;
     const int block_height = 144 / 8;
@@ -749,14 +691,9 @@ WGB_perceptual_hash WGB_added_difference_hash(wide_gb *wgb, uint8_t *rgb_pixels)
     // 1. Grayscale
 
     // For each pixel
-    uint8_t r, g, b;
     uint8_t grayscaled_pixels[160 * 144];
-    for (size_t rgb_i = 0, grayscaled_i = 0; rgb_i < 160 * 144 * 3; rgb_i += 3, grayscaled_i += 1) {
-        r = rgb_pixels[rgb_i + 0];
-        g = rgb_pixels[rgb_i + 1];
-        b = rgb_pixels[rgb_i + 2];
-        // Convert to grayscale
-        grayscaled_pixels[grayscaled_i] = 0.212671f * r + 0.715160f * g + 0.072169f * b;
+    for (size_t i = 0; i < 160 * 144; i += 1) {
+        grayscaled_pixels[i] = 0.212671f * pixels[i].pixel + 0.715160f * pixels[i].line;
     }
 
     // DEBUG_write_grayscale_PPM(160, 144, grayscaled_pixels);
@@ -882,13 +819,11 @@ int WGB_IO_rmdir(const char *path)
 #endif
 }
 
-void WGB_IO_write_PPM(char *filename, int width, int height, uint8_t *pixels) {
+void WGB_IO_write_PPM(char *filename, int width, int height, WGB_native_pixel_t *pixels) {
     FILE *file = fopen(filename, "wb");
-    fprintf(file, "P6\n%d %d\n255\n", width, height);
 
-    for (int i = 0; i < width * height * 3; i += 3) {
-        // Write 3 uint8 values (R, G and B), starting from pixels[i] to pixels[i + 2]
-        fwrite((uint8_t *)&pixels[i], 1, 3, file);
+    for (int i = 0; i < width * height; i += 1) {
+        fwrite(&pixels[i], 1, 2, file);
     }
 
     fclose(file);

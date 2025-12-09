@@ -21,6 +21,7 @@ SDL_Surface *previous_window_surface = NULL;
 SDL_Surface *screen_surface = NULL;
 SDL_Surface *border_surface = NULL;
 SDL_PixelFormat *pixel_format = NULL;
+SDL_PixelFormat *gb_pix_format = NULL;
 enum pending_command pending_command;
 unsigned command_parameter;
 
@@ -135,6 +136,9 @@ void render_texture(void *pixels, void *previous)
     // 1. Clear the surface
     SDL_SetSurfaceBlendMode(active_window_surface, SDL_BLENDMODE_NONE);
     SDL_FillRect(active_window_surface, NULL, SDL_MapRGB(active_window_surface->format, 0, 0, 0));
+    
+    if(!gb_pix_format)
+        gb_pix_format = SDL_AllocFormat(SDL_PIXELFORMAT_RGB555);
 
     // 2. Display each WideGB tile
     if (should_render_widescreen) {
@@ -154,8 +158,21 @@ void render_texture(void *pixels, void *previous)
             }
             // Draw the tile
             SDL_Surface *tile_surface = sdl_surface_for_wgb_tile(i);
-            if (tile->dirty) {
-                memcpy(tile_surface->pixels, tile->pixel_buffer, 160 * 144 * sizeof (uint32_t));
+            /*if (tile->dirty)*/ {
+                // Decode the RGB components of the pixels
+                uint32_t rgb_pixels[160 * 144];
+                for (size_t pixels_i = 0; pixels_i < 160 * 144; pixels_i += 1) {
+                    rgb_pixels[pixels_i] = wgb.palettes[tile->pixel_buffer[pixels_i].line * 4 + tile->pixel_buffer[pixels_i].pixel];
+                    /*uint16_t tmpPix = wgb.palettes[tile->pixel_buffer[pixels_i].line * 4 + tile->pixel_buffer[pixels_i].pixel];
+                    
+                    uint8_t r, g, b;
+                    
+                    SDL_GetRGB(tmpPix, gb_pix_format, &r, &g, &b);
+                    
+                    rgb_pixels[pixels_i] = SDL_MapRGB(pixel_format, b, g, r);*/
+                }
+                
+                memcpy(tile_surface->pixels, rgb_pixels, 160 * 144 * sizeof(uint32_t));
                 tile->dirty = false;
             }
             SDL_Rect tile_rect = WGB_rect_for_tile(&wgb, tile);
